@@ -1,0 +1,36 @@
+Review ONLY this Teams conversation for [START DATE] to [END DATE]. Project name: [PROJECT].
+
+Extract significant decisions, actions, risks, issues and durable facts. Produce a single VALID JSON object, with a "records" array, and no Markdown code fences.
+
+For each record, use exactly these keys:
+{
+  "id": "YYYYMMDD-01",
+  "title": "Short title",
+  "record_type": "Decision",
+  "project": "[PROJECT]",
+  "description": "What was actually discussed or agreed",
+  "status": "Proposed",
+  "owner": null,
+  "event_date": "YYYY-MM-DD",
+  "source_chat": "Actual chat name",
+  "source_link": null,
+  "last_reviewed": null,
+  "review_status": "Pending Review"
+}
+
+Use record_type: Decision, Action, Risk, Issue or Fact.
+Use status: Proposed, Confirmed, Closed or Superseded.
+Use a unique id for each row consisting of today's extraction date YYYYMMDD followed by a sequence number (01, 02, etc). If appending to an existing file, make sure IDs do not duplicate existing IDs.
+
+Rules:
+- Create one record per distinct item. Do not invent owners, dates, approvals, or message URLs.
+- "Confirmed" requires explicit evidence of agreement; otherwise use "Proposed".
+- Use null if owner, event date or source link cannot be established.
+- Include a link to the exact Teams message where available, not just a link to the entire chat.
+- All records remain "Pending Review" until a person checks the underlying messages.
+- If message history is incomplete, state that limitation in a brief note AFTER the JSON.
+
+Return JSON in this exact outer form:
+{"records": [ ... ]}
+
+Do not claim to have saved any file. I will review and save the records myself.
