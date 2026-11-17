@@ -1,4 +1,0 @@
-CopilotKB Knowledge Register
-JSON file is authoritative; this TXT view is derived.
-Schema: 1.0.0
-Last updated: null
