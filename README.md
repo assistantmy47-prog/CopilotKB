@@ -1,4 +1,4 @@
-# CopilotKB — 10-minute proof of concept
+# CopilotKB — quick-start proof of concept
 
 **Goal:** Ask a Microsoft 365 Copilot agent questions about decisions and actions captured from a specified Teams chat.
 
