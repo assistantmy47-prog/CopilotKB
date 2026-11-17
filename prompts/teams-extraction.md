@@ -1,54 +1,76 @@
-# Teams chat extraction prompt
+# Teams chat extraction prompt — JSON output
 
-**Use location:** Open **Copilot from within the specific Microsoft Teams conversation** to be reviewed. Do not rely on a standalone agent to infer which chat you intended.
+**Where to run:** Open Copilot **inside the specific Teams conversation**. Replace the date placeholders. Do not ask a separate general agent to guess the conversation.
 
-Copy the prompt below, replace the date placeholders, run it, then verify every material result against the originating messages before saving to SharePoint.
+Copy the following prompt:
 
 ---
 
-Review **this Teams conversation** for the period **[START DATE] through [END DATE]**, inclusive. Confirm the conversation being reviewed and the date range used.
+Review **this Teams conversation** for the period **[START DATE] through [END DATE]** inclusive.
 
-Extract material information suitable for a persistent project knowledge register.
+Extract material information suitable for long-term project knowledge capture:
+- Explicitly confirmed decisions and rationale
+- Proposed decisions (clearly distinguished from approvals)
+- Action items, named owners and due dates where stated
+- Risks, issues and durable material facts
+- Changes to prior decisions, including superseded decisions
 
-Identify:
-- Confirmed decisions and their rationale
-- Actions, action owners and deadlines, where explicitly stated
-- Risks and issues raised
-- Material technical or business facts
-- Changes to previously agreed positions, including superseded decisions
+**Output a valid JSON object** with one property named \`records\`, containing an array. Create **one record per distinct fact, decision, action, risk or issue**.
 
-Return a table with exactly these columns:
+Use this structure for every record:
 
-| Title | Record Type | Description | Status | Owner | Event Date | Source Message |
-| --- | --- | --- | --- | --- | --- | --- |
+\`\`\`json
+{
+  "title": "Short description",
+  "record_type": "Decision",
+  "project": "[PROJECT NAME]",
+  "description": "Grounded, concise summary",
+  "status": "Proposed",
+  "owner": null,
+  "event_date": null,
+  "source_chat": "[THIS CHAT'S NAME]",
+  "source_link": null,
+  "last_reviewed": null,
+  "review_status": "Pending Review",
+  "rationale": null,
+  "due_date": null,
+  "related_record_ids": [],
+  "tags": []
+}
+\`\`\`
+
+Permitted values:
+- \`record_type\`: Decision, Action, Risk, Issue, Fact
+- \`status\`: Proposed, Confirmed, Closed, Superseded
+- \`review_status\`: **Pending Review** only; it must be human-verified before being changed to Verified
+- If owner, date, rationale or source link is unknown, use \`null\` — **do not fabricate**.
+- Use ISO \`YYYY-MM-DD\` format for dates.
 
 Rules:
-1. Create one row for each distinct material item. Do not combine unrelated decisions or actions.
-2. Record Type must be one of: **Decision, Action, Risk, Issue, Fact**.
-3. Status must be one of: **Proposed, Confirmed, Closed, Superseded**, using the most appropriate available status.
-4. Use **Confirmed** only where the conversation explicitly supports agreement or approval. A suggestion or unchallenged comment is not automatically confirmed.
-5. Do not invent people, approval, action ownership, deadlines, dates or rationale.
-6. If an owner, event date or source link is not ascertainable, use **Not stated** or **Unable to verify**; do not guess.
-7. Quote sparingly and preserve the exact meaning of the discussion.
-8. Give source message links or native citations for every item where possible. If Copilot cannot link to the source, mark the row **Needs manual source check**.
-9. Highlight contradictory statements or later changes to an earlier position.
-10. Do not include irrelevant social conversation, routine status updates with no lasting significance, sensitive information not necessary for the record, or speculative conclusions.
-11. Do not claim completeness if some of the period is inaccessible. State what message history was actually available and what remains unchecked.
+1. Only use **this** Teams chat. Do not silently substitute a different conversation.
+2. Explicit consent/agreement is required for the status Confirmed; silence or speculation is not confirmation.
+3. Each record must be atomic. Do not combine unrelated issues.
+4. Preserve the original message source URL when retrievable. If not available, use null and flag it for validation separately.
+5. Do not invent personal names, deadlines, dates, approvals, citations or prior record IDs.
+6. Do not assign stable \`id\`, \`created_at\` or \`updated_at\` fields: the knowledge-store writer will supply them.
+7. Do not include sensitive personal information or unrelated social discussion.
+8. Be honest about incomplete chat history and coverage limitations.
 
-After the table, provide:
-- **Items requiring validation** (ambiguous status, owner, rationale or date)
-- **Potential duplicates** (if they can be identified from the available context)
-- **Coverage limitations** (unavailable messages, limited history or missing citations)
+**After the JSON**, provide short plain-language review notes indicating:
+- Which source links are missing
+- Which items appear ambiguous or might be duplicates
+- Which part of the requested time period could not be accessed
+
+Do not put explanation inside the JSON object itself.
 
 ---
 
-## Review and save
+## Save and validate
 
-1. Check every material fact and decision against the original Teams source.
-2. Obtain the original message link using **More options → Copy link** where Copilot's citation is insufficient.
-3. Copy reviewed rows into the SharePoint **Project Knowledge Register** list, one item per record.
-4. Assign the correct Project and Source Chat values.
-5. Leave status as Proposed or mark the record for review if it is not clearly agreed.
-6. Check the register for duplicate or superseded items; link related records instead of deleting history.
+1. Copy the JSON object (without explanatory notes) to \`new-records.json\`.
+2. Verify extracted information against the actual Teams messages.
+3. Update \`review_status\` to \`Verified\` **only after independent human review**. Populate \`last_reviewed\` with the review date.
+4. Merge into the portable \`knowledge.json\` with \`scripts/knowledge_store.py\`, which creates UUIDs/timestamps and a TXT mirror.
+5. Upload both files to an approved SharePoint library (or sync using an authorised SharePoint client).
 
-This is a **human-reviewed extraction workflow**, not proof that Copilot has accessed the complete historical chat.
+The prompt generates **candidate records**, not verified evidence and not an automatic SharePoint write.
