@@ -1,50 +1,50 @@
-# Optional automation — licensing-dependent
+# Power Automate extension — write JSON in SharePoint
 
-The baseline CopilotKB procedure works with **Microsoft 365 Copilot Agent Builder + Teams Copilot + SharePoint** and manual review. Automation is an optional extension, not a prerequisite.
+This is **optional** and requires tenant permission to create Power Automate cloud flows. The MVP works with manual Teams Copilot extraction, the [JSON writer](../scripts/knowledge_store.py) and a SharePoint document library.
 
-## Entitlement check
+Microsoft 365 Copilot **Agent Builder cannot create custom external write actions by itself**. Do not misrepresent the retrieval agent as capable of modifying SharePoint.
 
-Open [Power Automate](https://make.powerautomate.com) with your work account and check whether you can create an **automated cloud flow**.
+## Verify licensing and policies first
 
-If creating flows is blocked by licensing, environment restrictions, data loss prevention (DLP) policies or admin controls, continue with the manual MVP.
+1. Open [Power Automate](https://make.powerautomate.com) using your work account.
+2. Check whether **Create → Automated cloud flow** or **Instant cloud flow** is available.
+3. Verify that the Teams and SharePoint **standard connectors** are usable in the intended environment, and permitted by Data Loss Prevention (DLP), conditional access and business policies.
+4. If blocked, use the manual MVP. Opening the Power Automate portal is not proof you have permission to create flows.
 
-> Teams and SharePoint connectors are generally **standard** Power Automate connectors, but trigger/action availability, user rights and tenant policy can differ. Do not assume full Teams history extraction or AI processing is licensed because the portal opens.
+## Proposed deterministic file update flow
 
-## Candidate phase-2 flow (deterministic chat targeting)
+For controlled JSON submissions, create a flow which:
 
-| Stage | Candidate operation | Notes |
-| --- | --- | --- |
-| 1. Select | Specific chat / conversation ID | Validate exactly which chat the connection can access |
-| 2. Trigger | New Teams chat message | Check that a trigger for the chosen chat type is actually available |
-| 3. Parse | Message text, sender, sent time and message ID/link | Preserve traceability and handle edited/deleted messages according to policy |
-| 4. Filter | Explicit marker such as #decision or #action | Avoid indiscriminate capture of all correspondence |
-| 5. Persist | Create SharePoint list item | Initially write as draft / needs review |
-| 6. Review | Human validates and changes status | Do not auto-promote to Confirmed |
+1. **Trigger:** A permitted manual trigger or a Teams-chat message trigger, if your tenant exposes the desired trigger.
+2. **Identify source:** Use the exact Teams conversation ID where applicable; do not search arbitrary Teams chats by approximate names.
+3. **Obtain the proposed records:** Either accept structured JSON records or capture explicitly tagged messages (\`#decision\`, \`#action\`). Merely triggering on a message does **not** automatically produce a credible summary of the whole discussion.
+4. **Validate:** Parse the incoming JSON, check required fields, prevent duplicates, set review_status to Pending Review, and capture evidence/source links where available.
+5. **Read:** SharePoint **Get file content** or **Get file content using path** retrieves \`knowledge.json\`.
+6. **Merge:** Parse the existing JSON, append new UUID-keyed entries or intentionally revise existing IDs, and update the root \`updated_at\`.
+7. **Write:** SharePoint **Update file** replaces the contents of \`knowledge.json\` with the complete updated valid JSON.
+8. **Synchronise search representation:** Generate \`knowledge.txt\` deterministically from JSON, then use another **Update file** action. Consider separate maintenance if your flow cannot support a reliable text transformation.
+9. **Review/audit:** Notify a reviewer, retain SharePoint version history and verify the new file version and agent search result.
 
-**Do not treat a new-message trigger as historical backfill**: a separate, permitted retrieval mechanism would be needed to process older messages.
+**Important:** A file update is not an append operation. The flow performs **read → merge → rewrite**; there is a lost-update risk if two instances run concurrently. Configure serial execution for one file, and consider version/ETag guards or a queued writer. Test failure recovery and write conflicts before production use.
 
-## AI-assisted phase 3 (only if approved)
+## Incremental capture is not historical reconstruction
 
-An additional licensed AI action/service could classify messages, deduplicate records, identify action owners, reconcile changing decisions and produce structured output for human approval. Copilot Studio, AI Builder, Power Automate premium or usage-based services may be relevant depending on tenant entitlements.
+- A new-message Teams trigger captures only messages exposed to it after the flow is enabled; it does not retroactively collect earlier messages.
+- Message content alone may not prove a decision is confirmed. Use a reviewer to authorise status changes.
+- Deep AI classification or automated conversation summarisation may require licensed AI capabilities, custom actions or additional service controls.
 
-Potential controls:
-- Prompt/version control for extraction and status definitions
-- Confidence and evidence quality thresholds
-- Validation prior to SharePoint writes
-- Retry/dead-letter handling to avoid lost messages
-- Audit trail of modifications
-- Access rights consistent with the Teams source and SharePoint destination
-- Removal of unnecessary personal or protected information
+## Future enhancement
 
-## Practical progression
-
-1. **Pilot:** One chat, one week, manual Copilot extraction and SharePoint validation.
-2. **Standardise:** Reusable prompt, agreed fields, record ownership and recurring cadence.
-3. **Semi-automate:** Flow captures deliberately tagged messages to draft list items.
-4. **Enhance:** Licensed AI processing and reconciliation after measured retrieval quality.
+A more advanced implementation could add:
+- Scheduled extraction with exact conversation IDs
+- Idempotent ingestion keyed on Teams message IDs
+- Decision reconciliation and historical linking
+- Human approval before publishing confirmed information
+- Partitioning by project/month to reduce single-file conflict and retrieval costs
+- Retry handling, audit logs and failure notification
 
 ## References
 
-- [Microsoft Teams connector](https://learn.microsoft.com/en-us/connectors/teams/)
-- [SharePoint connector](https://learn.microsoft.com/en-us/connectors/sharepointonline/)
-- [Microsoft 365 Copilot Agent Builder knowledge](https://learn.microsoft.com/en-us/microsoft-365/copilot/extensibility/agent-builder-add-knowledge)
+- [SharePoint connector actions: Get file content, Update file](https://learn.microsoft.com/en-us/connectors/sharepoint/)
+- [Teams connector](https://learn.microsoft.com/en-us/connectors/teams/)
+- [Agent Builder actions limitation](https://learn.microsoft.com/en-us/microsoft-365/copilot/extensibility/agent-builder)
