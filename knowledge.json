@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "records": [
+    {
+      "id": "DEMO-001",
+      "title": "Pilot uses one Teams chat",
+      "record_type": "Decision",
+      "project": "DEMO ONLY",
+      "description": "FICTIONAL TEST RECORD: the pilot team agreed to start with one Teams chat before expanding.",
+      "status": "Confirmed",
+      "owner": null,
+      "event_date": "2026-11-16",
+      "source_chat": "DEMO ONLY (not an actual conversation)",
+      "source_link": null,
+      "last_reviewed": "2026-11-16",
+      "review_status": "Verified"
+    },
+    {
+      "id": "DEMO-002",
+      "title": "Daily digest suggestion",
+      "record_type": "Action",
+      "project": "DEMO ONLY",
+      "description": "FICTIONAL TEST RECORD: a daily digest was suggested, but no owner or deadline was agreed.",
+      "status": "Proposed",
+      "owner": null,
+      "event_date": "2026-11-16",
+      "source_chat": "DEMO ONLY (not an actual conversation)",
+      "source_link": null,
+      "last_reviewed": null,
+      "review_status": "Pending Review"
+    }
+  ]
+}
