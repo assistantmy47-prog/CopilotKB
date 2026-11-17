@@ -1,77 +1,70 @@
-# Knowledge register schema and operating controls
+# Knowledge register — portable JSON v1
 
-## Create the register
+## Storage
 
-Create a Microsoft List / SharePoint list named **Project Knowledge Register** within an approved SharePoint site. Set permissions based on the sensitivity of the discussion and apply your organisation's information management and retention requirements.
+**Do not create a SharePoint List for the MVP.** Store \`knowledge.json\` and a derived \`knowledge.txt\` side-by-side in a restricted SharePoint **document library**, with version history enabled.
 
-### Minimum viable columns
+Use [the implementation guide](json-store.md), [the JSON Schema](../schema/knowledge.schema.json), [the empty template](../data/knowledge.template.json), and [the fictional example](../examples/knowledge.example.json).
 
-| Column | Type | Required? | Description |
-| --- | --- | --- | --- |
-| Title | Single line text | Yes | Succinct label for one atomic record |
-| Record Type | Choice | Yes | Decision / Action / Risk / Issue / Fact |
-| Project | Choice or single line text | Yes | Consistent workstream identifier |
-| Description | Multiple lines | Yes | Concise, evidence-based description |
-| Status | Choice | Yes | Proposed / Confirmed / Closed / Superseded |
-| Owner | Person | No | Only populate if the owner is identified |
-| Event Date | Date | Yes if known | When discussed/decided; not necessarily capture date |
-| Source Chat | Single line text | Yes | Chat title or approved conversation reference |
-| Source Link | Hyperlink | Recommended | Link to the evidence-bearing Teams message |
-| Last Reviewed | Date | Yes | Most recent human validation date |
+## Field definitions
 
-Use SharePoint's created/modified audit fields alongside the above columns; do not overwrite event dates with data-entry timestamps.
+| Field | JSON type | Purpose |
+| --- | --- | --- |
+| \`id\` | UUID string | Immutable, portable record identifier |
+| \`title\` | string | Concise descriptive heading |
+| \`record_type\` | enum | Decision, Action, Risk, Issue, Fact |
+| \`project\` | string | Project/workstream identifier |
+| \`description\` | string | Evidence-based, atomic information |
+| \`status\` | enum | Proposed, Confirmed, Closed, Superseded |
+| \`owner\` | string or null | Only if explicitly assigned |
+| \`event_date\` | YYYY-MM-DD or null | When the original event occurred |
+| \`source_chat\` | string | Source conversation identifier/title |
+| \`source_link\` | URL or null | Original Teams message link |
+| \`last_reviewed\` | YYYY-MM-DD or null | Human verification date |
+| \`review_status\` | enum | Pending Review, Verified, Rejected |
+| \`created_at\` | UTC ISO timestamp | When the register record was first created |
+| \`updated_at\` | UTC ISO timestamp | When the register record was last changed |
+| \`rationale\` | string or null | Explicit explanation for a decision |
+| \`due_date\` | YYYY-MM-DD or null | Due date for an action when stated |
+| \`related_record_ids\` | array of UUIDs | Related or superseding items |
+| \`tags\` | array of strings | Searchable subject terms |
 
-### Recommended enhancements (after pilot)
+The file root contains \`schema_version\`, \`updated_at\` and \`records\`. \`schema_version\` starts at \`1.0.0\`. The [schema](../schema/knowledge.schema.json) is the formal contract; optional enhancements must not be invented in extracted data without a schema update.
 
-| Column | Purpose |
-| --- | --- |
-| Review State | Draft / Needs Review / Verified |
-| Reviewer | Person who validated the extraction |
-| Related Record ID | Link previous or superseded records |
-| Decision Rationale | Separate rationale from conclusion where useful |
-| Due Date | For actions only, when explicitly committed |
-| Classification | Organisational information classification |
-| Record Version / Change Note | Explain material amendments |
-
-**Status and verification are separate dimensions.** For example, an approved but unverified extraction should not be treated as a confirmed fact merely because AI labelled it Confirmed. During a pilot, if no Review State column exists, use a manual review gate before entering a record into the register.
-
-## Examples — fictional only
-
-| Title | Record Type | Status | Description | Owner |
-| --- | --- | --- | --- | --- |
-| Approve pilot scope | Decision | Confirmed | Fictional team explicitly agreed the pilot would use one test chat. | Not stated |
-| Consider weekly reporting | Decision | Proposed | Fictional suggestion to review weekly reporting; no decision recorded. | Not stated |
-| Validate source link coverage | Action | Proposed | Fictional request to check whether source links resolve. | Test owner |
-| Earlier extraction approach | Decision | Superseded | Fictional prior choice replaced by a later confirmed approach. | Not stated |
-
-These are examples only, not extracted from any actual team discussion.
+**Review and business status are different dimensions.** A record can be *Proposed* and *Verified* if the human reviewer confirms that the team discussed a proposal but did not approve it. Conversely, an AI summary labelled *Confirmed* remains *Pending Review* until the original messages have been checked.
 
 ## Weekly operating procedure
 
-1. Select the exact Teams conversation and a bounded date range.
-2. Run the standard extraction prompt from the chat's own Copilot panel.
-3. Compare output to the messages and validate status, wording, owner and dates.
-4. Search SharePoint for existing records on the same subject.
-5. Create or update records, preserving source links and change history.
-6. Mark uncertain records as draft / needs review; do not present them as confirmed.
-7. Sample-test the retrieval agent using known source-backed records.
-8. Record any gaps due to inaccessible chat history or missing permissions.
+1. Open the intended Teams chat and select Copilot from within it.
+2. Run the date-bounded [JSON extraction prompt](../prompts/teams-extraction.md).
+3. Review all material entries, source evidence, decisions, status, named owners and deadlines.
+4. Copy candidate JSON into \`new-records.json\` in an approved working area.
+5. Check for duplicates and historical relationships in the existing \`knowledge.json\`.
+6. Mark reviewed entries as Verified and populate last_reviewed only after checking the source.
+7. Use [the writer](../scripts/knowledge_store.py) to merge and regenerate the TXT mirror.
+8. Upload or sync **both** files to SharePoint. Verify the Copilot agent is grounding answers in the updated \`knowledge.txt\`.
+9. Preserve superseded records, link to replacements and keep SharePoint version history.
 
-## Governance and control points
+## Ownership and governance
 
-- **Source traceability:** Every important decision should link to its original Teams message whenever possible.
-- **Permission inheritance:** Ensure the SharePoint register is not broader in access than the information it contains; Teams membership does not automatically match SharePoint permissions.
-- **Data minimisation:** Capture only material information needed for future business use; avoid full transcripts and unnecessary personal data.
-- **Retention and disposal:** Apply approved M365 retention/classification settings; GitHub is not the repository for business records.
-- **Conflict resolution:** Keep old decisions discoverable with Superseded status and a link to replacement, rather than quietly changing historical facts.
-- **Duplicate handling:** Check existing records first; automated deduplication is not part of the MVP.
-- **Security verification:** Validate the agent's results using accounts with different permissions where policy allows.
-- **Reliability:** Retrieval from a SharePoint list depends on indexing, permissions, licensing and available knowledge features, and should be acceptance-tested in the target tenant.
+- **Single writer initially:** Avoid overlapping updates to the JSON file; the writer creates a local backup but cannot prevent SharePoint sync conflicts.
+- **Source traceability:** Use specific Teams message URLs when possible, not chat-only links.
+- **Uncertain data:** Keep unknown owner/date/url values as null. Do not fabricate.
+- **Retention and privacy:** Follow corporate recordkeeping, classification and least-privilege access rules.
+- **Provenance:** Do not present a generated text mirror as the authoritative record.
+- **Permission check:** SharePoint folder permissions do not automatically match the originating Teams chat's membership.
+- **Durability:** Do not use GitHub or the agent's chat history for production records.
 
 ## Acceptance criteria
 
-- Agent retrieves a known verified record and provides a correct record/source reference.
-- Agent does not confuse **Proposed** with **Confirmed**.
-- Agent recognises **Superseded** records and explains later confirmed replacements.
-- Agent returns an evidence-based **no matching record found** response for absent content.
-- Reviewer can navigate from the register to the original Teams message, where policy and permissions permit.
+- JSON validates against versioned schema and has unique record IDs.
+- The TXT mirror reflects the latest JSON content.
+- A verified confirmed decision can be found in Copilot with its source.
+- Proposed, pending-review and superseded entries are differentiated.
+- The agent reports missing records without fabricating evidence.
+- Manual review is required before unverified outputs are represented as approved outcomes.
+- Source access is constrained by the approved SharePoint library permissions.
+
+## When to migrate
+
+Once the records grow or multiple users need concurrent writes, split the store into project/time-based JSON files or move storage to a transactional system (SharePoint List, Dataverse, database), preserving the JSON export schema so migration is straightforward.
