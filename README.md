@@ -1,137 +1,115 @@
-# CopilotKB — Teams Knowledge Capture Agent
+# CopilotKB — Portable Teams Knowledge Capture
 
-A pragmatic implementation guide for retaining useful decisions, actions, issues, risks and material facts from Microsoft Teams conversations using **Microsoft 365 Copilot Agent Builder**, **Teams Copilot** and **SharePoint**.
+A practical implementation guide for extracting decisions, actions, issues, risks and material facts from a specific Microsoft Teams conversation, retaining them in a **portable JSON file stored in an approved SharePoint document library**, and retrieving them later through Microsoft 365 Copilot Agent Builder.
 
-> **Status:** Implementation playbook, not a deployed agent. This project contains no Teams messages, Microsoft credentials, production configurations or client information. Repository is public: do not commit actual chat transcripts, project decisions, employee details or tenant URLs.
+> **Project state:** Documentation, JSON schema, example records and a local writer utility only. No live Copilot agent, Power Automate flow or SharePoint folder has been provisioned. This is a **public repository**: never commit organisation-specific Teams data, personal data, credentials, tenant URLs or actual project records.
 
-## Objective
+## The design
 
-Turn conversation content into durable, searchable project knowledge, with an auditable reference to the originating Teams message.
+\`\`\`text
+Specified Teams chat
+    |
+    v
+Copilot opened INSIDE that Teams chat
+    |
+    v
+Date-bounded structured extraction prompt
+    |
+    v
+Human validation against source messages
+    |
+    v
+SharePoint DOCUMENT LIBRARY
+  - knowledge.json  <- portable authoritative store
+  - knowledge.txt   <- generated, readable search mirror
+    |
+    v
+Microsoft 365 Copilot Agent Builder retrieval agent
+  - Knowledge source: knowledge.txt
+  - Answers with source references and statuses
+\`\`\`
 
-Typical question: “What did the team agree about a particular exception-handling approach, when, and on what evidence?”
+### Why two files?
 
-A conversational answer alone is **not** a persistent knowledge register. For the initial implementation, use SharePoint as the system of record; the Copilot agent is the retrieval interface.
+- **\`knowledge.json\`** is a stable versioned structure for migration, processing, and deterministic writes.
+- **\`knowledge.txt\`** is a derived readable file for reliable Agent Builder grounding. JSON is supported in some Microsoft 365 Copilot experiences, but is **not currently listed as an Agent Builder knowledge-file type**. Text is listed.
+- Copilot Agent Builder is primarily a **retrieval / reasoning layer**, not a writable data pipeline. It cannot author the custom action needed to update a SharePoint JSON file.
+- To write automatically, you would need an authorised **Power Automate** flow or other approved writer. Without it, the pilot uses a human-review step and file replacement/synchronisation.
 
-## Constraints and recommended design
+## Implementation files
 
-Assume access to Microsoft 365 Copilot and its Agent Builder, but **not** standalone Copilot Studio agent creation or premium workflows.
-
-| Requirement | Available MVP approach | Limitation |
-| --- | --- | --- |
-| Review one intended Teams conversation | Open **Copilot inside that Teams chat** | Chat access, history window and citation availability depend on tenant/policy/product behaviour |
-| Extract useful information | Use the structured Teams extraction prompt | AI output requires human verification |
-| Retain information beyond the chat | Store reviewed items in a SharePoint list | Manual copy/review for the MVP |
-| Ask questions later | Agent Builder agent with that SharePoint list as knowledge | Retrieval accuracy and permissions still need testing |
-| Automatic capture from Teams | Optional Power Automate flow, if allowed | Trigger availability, tenant policies and connector rights need verification |
-| AI-based automatic consolidation | Future licensed workflow | Not provided by basic Agent Builder alone |
-
-**Important retrieval distinction:** Selecting a particular Teams conversation as an Agent Builder knowledge source does not guarantee that a free-form user query will be scoped to the right chat. This project deliberately separates capture (Copilot opened from the intended chat) from retrieval (a curated SharePoint register). “Only use specified sources” is a source-prioritisation option, **not** an access-control or guaranteed retrieval boundary.
-
-## Architecture
-
-1. **Teams conversation** — original message-level evidence.
-2. **Teams Copilot** — manually invoked from the specific intended conversation to produce a structured extraction.
-3. **Human review** — verify the details, owner, decision status and evidence; resolve duplicates and contradictions.
-4. **SharePoint: Project Knowledge Register** — persistent source of truth.
-5. **Microsoft 365 Copilot Agent Builder: Project Knowledge Assistant** — reads the register and answers evidence-backed questions.
-
-The MVP is **manually triggered**, not a background monitor.
+| File | Purpose |
+| --- | --- |
+| [docs/json-store.md](docs/json-store.md) | Complete SharePoint file workflow, governance, concurrency and automation pathway |
+| [schema/knowledge.schema.json](schema/knowledge.schema.json) | Portable JSON Schema (v1) |
+| [data/knowledge.template.json](data/knowledge.template.json) | Empty file to initialise in SharePoint |
+| [examples/knowledge.example.json](examples/knowledge.example.json) | Fictional sample data only |
+| [scripts/knowledge_store.py](scripts/knowledge_store.py) | Local JSON merge/upsert and TXT mirror generation tool |
+| [prompts/teams-extraction.md](prompts/teams-extraction.md) | Prompt for the Copilot panel INSIDE the specific Teams conversation |
+| [prompts/agent-instructions.md](prompts/agent-instructions.md) | Agent Builder instructions for retrieval from the TXT mirror |
+| [docs/knowledge-register.md](docs/knowledge-register.md) | Data definitions, review policy and acceptance tests |
+| [docs/automation-options.md](docs/automation-options.md) | Optional Power Automate path, subject to permissions |
 
 ## Quick start
 
-### A. Create the SharePoint register
+1. Create an approved SharePoint document library folder, e.g. \`Documents/CopilotKB/\`. Turn on version history and verify access settings.
+2. Copy [data/knowledge.template.json](data/knowledge.template.json) into SharePoint as \`knowledge.json\`.
+3. Open the **exact Teams chat**, choose **Open Copilot**, and use [the extraction prompt](prompts/teams-extraction.md) with a bounded date range. Review all results and copy message source links.
+4. Save the JSON extraction output (a record or \`records\` array) to a local \`new-records.json\`.
+5. Run the standard-library Python utility against your working copy of \`knowledge.json\`:
 
-Create a SharePoint/Microsoft List named **Project Knowledge Register** in an appropriate site with organisation-approved access controls and retention settings.
+   \`\`\`bash
+   python scripts/knowledge_store.py upsert \
+     --store knowledge.json --input new-records.json --mirror knowledge.txt
+   \`\`\`
 
-Minimum columns:
+6. Upload or synchronise **both** files back to the SharePoint library. The utility itself does not connect to SharePoint.
+7. In **Microsoft 365 Copilot → Agents → Edit → Configure → Knowledge**, add the specific SharePoint **\`knowledge.txt\`** file; use [the retrieval instructions](prompts/agent-instructions.md).
+8. Test responses for a known confirmed decision, an unapproved proposal, a superseded decision and a nonexistent record. Check that source links and statuses are correct.
 
-| Column | Suggested type | Guidance |
-| --- | --- | --- |
-| Title | Single line text | Concise subject |
-| Record Type | Choice | Decision / Action / Risk / Issue / Fact |
-| Project | Choice or text | Workstream or project |
-| Description | Multiple lines | Atomic, evidence-based summary |
-| Status | Choice | Proposed / Confirmed / Closed / Superseded |
-| Owner | Person | Blank when not stated |
-| Event Date | Date | When discussed or decided, not automatically capture date |
-| Source Chat | Single line text | Chat title or approved identifier |
-| Source Link | Hyperlink | Exact message link where available |
-| Last Reviewed | Date | Validation date |
+## Example of a JSON record
 
-See [SharePoint schema and governance](docs/knowledge-register.md) for suggested enhancements.
+\`\`\`json
+{
+  "id": "110e8400-e29b-41d4-a716-446655440001",
+  "title": "Pilot scope limited to one fictional Teams chat",
+  "record_type": "Decision",
+  "project": "DEMO-PROJECT",
+  "description": "In a fictional exercise, the test team approved a one-chat pilot.",
+  "status": "Confirmed",
+  "owner": null,
+  "event_date": "2026-11-13",
+  "source_chat": "Fictional Example Chat",
+  "source_link": null,
+  "last_reviewed": "2026-11-16",
+  "review_status": "Verified",
+  "created_at": "2026-11-16T15:00:00Z",
+  "updated_at": "2026-11-16T15:00:00Z"
+}
+\`\`\`
 
-### B. Capture information from a specific Teams chat
+Production records may include \`rationale\`, \`due_date\`, \`tags\` and \`related_record_ids\` as defined in the schema. **Never claim an unlinked fictional record is evidence of a real decision.**
 
-1. Navigate to **the actual Teams chat** to be reviewed.
-2. Open **Copilot in that conversation**, rather than asking an agent to guess the chat.
-3. Use [the capture prompt](prompts/teams-extraction.md), specifying a defined start/end date.
-4. Inspect the resulting records against the source messages; copy individual source links where available.
-5. Add one SharePoint list item for each **distinct material record**.
-6. Mark proposals as **Proposed** until confirmed by evidence. Flag unverified/ambiguous results rather than silently assigning owners or approvals.
+## Design guardrails
 
-Start with a **weekly manual capture** for one project conversation, then expand once the process is reliable. Teams Copilot's accessible history and historical message coverage may be limited; validate what it can actually read before depending on it as a complete archive.
+- **Source verification:** AI extraction is unverified until a person checks the underlying Teams discussion.
+- **Data provenance:** Preserve the originating Teams message link wherever available.
+- **No ungrounded approvals:** “Proposed” and “Confirmed” must remain distinct.
+- **Temporal consistency:** Keep records and indicate when an older decision is superseded.
+- **Concurrency:** A single JSON file has overwrite risk; keep one editor/writer during the pilot, and use SharePoint version history.
+- **Content boundaries:** Do not publish internal chat extracts or upload regulated/confidential records to this public repository.
+- **Indexing:** After replacing \`knowledge.txt\`, allow indexing time and validate that Agent Builder is using its latest version.
+- **Scope:** A source-prioritisation toggle is not guaranteed source isolation, and agent conversation memory is not a persistent database.
 
-### C. Configure the retrieval agent
+## Roadmap
 
-1. Open **Microsoft 365 Copilot → Agents** and create or edit an agent.
-2. Name it **Project Knowledge Assistant**.
-3. In **Configure → Knowledge**, add the **specific SharePoint list** (not just a broad SharePoint site). Confirm the UI supports selecting the list in your tenant.
-4. For this retrieval agent, **remove broad Teams chat knowledge sources** so it is not asked to guess which raw conversation to search.
-5. Enable **Only use specified sources**, if available, while recognising that this is not a strict isolation guarantee.
-6. Paste [the agent instructions](prompts/agent-instructions.md) into the agent's Instructions field.
-7. Save and test in a fresh Copilot chat.
+1. **MVP:** One chat, weekly manual extraction, JSON updates, TXT retrieval mirror.
+2. **Optional low-code write:** Power Automate standard SharePoint connector reads/updates JSON, plus generation of the TXT mirror.
+3. **Enhanced automation:** Licensed AI processing, approval workflows, deduplication and incremental ingestion.
+4. **Scale:** Partition the JSON store by workstream/date while retaining the same schema.
 
-### D. Run an acceptance test
+## Microsoft references
 
-Create several **fictional or approved non-sensitive** SharePoint test entries, including a confirmed decision, a proposal, an open action, and a superseded decision. Verify that the agent:
-
-- Locates the correct project item and cites a source.
-- Does not promote a **Proposed** record to a **Confirmed** decision.
-- Distinguishes an open action from one closed.
-- Surfaces an older decision as **Superseded** rather than presenting it as current.
-- Says “not found” when no supporting record exists.
-- Does not expose records the user lacks permission to access.
-
-If a test fails, review the source-list connection, indexing/access rights, fields and agent instructions; do not rely on prompts alone to enforce permissions.
-
-## Operating model
-
-- **Frequency:** once weekly to start, for one well-defined chat.
-- **Input:** date-bounded conversation plus the standard capture prompt.
-- **Human control:** reviewer validates every entry against source evidence.
-- **Output:** atomic SharePoint rows, not an undifferentiated weekly narrative.
-- **Change management:** prefer updating the status and linking related records over silently replacing historical decisions.
-- **Governance:** follow corporate retention, confidentiality, access, privacy and data-classification requirements. Do not store regulated data in this public repository.
-
-## Optional automation
-
-If your Microsoft 365 entitlement allows **Power Automate** automated cloud flows and the Teams/SharePoint standard connectors:
-
-1. Select a new-message trigger tied to a particular Teams chat, where supported.
-2. Capture chat/message identifiers, body, sender and timestamp.
-3. Optionally require a deliberate marker such as **#decision** or **#action**.
-4. Create a draft or unverified SharePoint list record.
-5. Validate duplicates and require review before labelling anything confirmed.
-
-This basic flow can **capture** messages, but it does not automatically reconcile an entire multi-day conversation or make sound AI classifications. AI-assisted processing or enhanced orchestrations may require other licensing, permissions and governance approvals. See [optional automation plan](docs/automation-options.md).
-
-## Definition of done for MVP
-
-- [ ] SharePoint list created with permitted access and relevant retention policy.
-- [ ] Chat-specific extraction tested against real source message links.
-- [ ] At least five sample items reviewed and entered.
-- [ ] Retrieval agent configured with the correct SharePoint list.
-- [ ] Confirmed / Proposed / Superseded / not-found tests passed.
-- [ ] Named reviewer and weekly operating cadence established.
-- [ ] Licensing and tenant policy assumptions documented.
-
-## References
-
-Microsoft Learn documentation (feature availability depends on tenant settings and product changes):
-
-- [Knowledge sources for Agent Builder](https://learn.microsoft.com/en-us/microsoft-365/copilot/extensibility/agent-builder-add-knowledge)
-- [Microsoft Teams connector for Power Automate](https://learn.microsoft.com/en-us/connectors/teams/)
-- [SharePoint connector](https://learn.microsoft.com/en-us/connectors/sharepointonline/)
-- [Copilot Studio](https://learn.microsoft.com/en-us/microsoft-copilot-studio/)
-
-_No automated workflow or Copilot agent is provisioned by these Markdown files. Follow the steps in your own approved Microsoft 365 environment._
+- [Agent Builder limitations](https://learn.microsoft.com/en-us/microsoft-365/copilot/extensibility/agent-builder)
+- [Agent Builder knowledge sources](https://learn.microsoft.com/en-us/microsoft-365/copilot/extensibility/agent-builder-add-knowledge)
+- [Power Automate SharePoint connector](https://learn.microsoft.com/en-us/connectors/sharepoint/)
